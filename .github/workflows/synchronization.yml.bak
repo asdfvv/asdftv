@@ -1,33 +1,79 @@
 #
-# 同步上游仓库或者清理发布都需要用REPO_TOKEN密匙
+# 同步程序,请勿修改文件名称（synchronise.yml）
 #
-# 记住，同步上游是不会同步您任何自建文件夹的，所以同步后您要自己对比我现有的文件夹里面diy-part.sh和settings.ini文件有没有更新
+# 同步上游仓库和使用此仓库都需要用到REPO_TOKEN密匙
 #
 # REPO_TOKEN密匙制作教程：https://git.io/jm.md
 #
 
-
-name: 同步上游仓库
+name: 同步,创建,删除
 on:
   workflow_dispatch:
     inputs:
-      again-fork:
-        description: '按[Run workflow]绿色按钮,启动同步上游仓库'
+      Synchro:
+        description: '====同步上游仓库===='
         required: false
-        default: 'fork'
-
+        default: 'false'
+        type: boolean
+      fork:
+        description: '请选择同步选项'
+        required: false
+        default: '单文件同步,带备份'
+        type: choice
+        options:
+          - '单文件同步,带备份'
+          - '单文件同步,不要备份'
+          - '不同步上游仓库,单纯删除仓库的.bak备份文件'
+          - '拉取整个上游仓库覆盖您现在的仓库(无备份)'
+      Establish:
+        description: '====在build文件夹创建机型文件夹===='
+        required: false
+        default: 'false'
+        type: boolean
+      establish_sample:
+        description: '请选择创建文件夹的源码'
+        required: true
+        default: '请选择'
+        type: choice
+        options:
+          - '请选择'
+          - 'Amlogic'
+          - 'Immortalwrt'
+          - 'Lede'
+          - 'Lienol'
+          - 'Official'
+          - 'Xwrt'
+      establish_name:
+        description: '您需要创建的文件夹名称'
+        default: ''
+      Deletefile:
+        description: '====删除build里面的文件夹===='
+        required: false
+        default: 'false'
+        type: boolean
+      Deletefile_name:
+        description: '请输入要删除的文件夹名称,一次删除多个请用英文逗号分开'
+        default: ''
 env:
   REPO_TOKEN: ${{ secrets.REPO_TOKEN }}
+  GIT_REPOSITORY: ${{github.repository}}
+  TONGBU_CANGKU: 1
   TZ: Asia/Shanghai
 
 jobs:
-  del_runs:
+  build:
+    name: 启动"同步,创建,删除"程序
     runs-on: ubuntu-22.04
     if: ${{ github.event.repository.owner.id }} == ${{ github.event.sender.id }}
     
-    name: 同步上游仓库
-    
     steps:
+    - name: 密匙检测（密匙为空则退出）
+      run: |
+        if [[ -z "${{ secrets.REPO_TOKEN }}" ]]; then
+          echo "您没有设置仓库密匙，请按教程设置好密匙再来"
+          echo "REPO_TOKEN密匙制作教程：https://git.io/jm.md"
+          exit 1
+        fi
     - name: 准备结束
       uses: actions/checkout@v3
       
@@ -35,70 +81,83 @@ jobs:
       env:
         DEBIAN_FRONTEND: noninteractive
       run: |
-        sudo -E apt-get -qq update > /dev/null 2>&1
-        sudo -E apt-get -qq install -y git subversion git-core wget curl grep > /dev/null 2>&1
+        sudo -E apt-get -qq update
+        sudo -E apt-get -qq install -y git subversion git-core wget curl grep
         sudo timedatectl set-timezone "$TZ"
         git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
         git config --global user.name "github-actions[bot]"
-          
-    - name: 整理数据
-      if: env.REPO_TOKEN && (github.event.inputs.again-fork == 'fork')
-      run: |
-        cd ${GITHUB_WORKSPACE}
-        git clone -b main https://github.com/281677160/build-actions.git shangyou
-        git clone -b main https://github.com/${{github.repository}}.git repogx
-        
-        rm -rf ${GITHUB_WORKSPACE}/shangyou/build/*/.config
-        cp -Rf ${GITHUB_WORKSPACE}/shangyou/README.md ${GITHUB_WORKSPACE}/repogx/README.md
-        cp -Rf ${GITHUB_WORKSPACE}/shangyou/LICENSE ${GITHUB_WORKSPACE}/repogx/LICENSE
-        for X in $(find ${GITHUB_WORKSPACE}/repogx/build -name "diy-part.sh" |sed 's/\/diy-part.sh//g'); do mv "${X}"/diy-part.sh "${X}"/diy-part.sh.bak; done
-        for X in $(find ${GITHUB_WORKSPACE}/repogx/build -name "settings.ini" |sed 's/\/settings.ini//g'); do mv "${X}"/settings.ini "${X}"/settings.ini.bak; done
-        for X in $(grep "\"LEDE\"" -rl "${GITHUB_WORKSPACE}/repogx/build" |grep "settings.ini" |sed 's/\/settings.*//g' |uniq); do cp -Rf shangyou/build/Lede_source/* "${X}"; done
-        for X in $(grep "\"LIENOL\"" -rl "${GITHUB_WORKSPACE}/repogx/build" |grep "settings.ini" |sed 's/\/settings.*//g' |uniq); do cp -Rf shangyou/build/Lienol_source/* "${X}"; done
-        for X in $(grep "\"IMMORTAL\"" -rl "${GITHUB_WORKSPACE}/repogx/build" |grep "settings.ini" |sed 's/\/settings.*//g' |uniq); do cp -Rf shangyou/build/Mortal_source/* "${X}"; done
-        for X in $(grep "\"TIANLING\"" -rl "${GITHUB_WORKSPACE}/repogx/build" |grep "settings.ini" |sed 's/\/settings.*//g' |uniq); do cp -Rf shangyou/build/Tianling_source/* "${X}"; done
-        [[ -d ${GITHUB_WORKSPACE}/repogx/build/openwrt_amlogic ]] && cp -Rf ${GITHUB_WORKSPACE}/shangyou/build/openwrt_amlogic/* ${GITHUB_WORKSPACE}/repogx/build/openwrt_amlogic/
-        if [[ -n "$(ls -A "${GITHUB_WORKSPACE}/repogx/.github/workflows/build-openwrt.yml" 2>/dev/null)" ]]; then
-          echo "CRON2=$(grep -A 1 'schedule:' repogx/.github/workflows/build-openwrt.yml |awk 'NR==2' |sed 's/^[ ]*//g' |sed s/^#// |sed 's/^[ ]*//g' |cut -d "#" -f1 |sed 's/\//\\&/g' |sed 's/\*/\\&/g')" >> ${GITHUB_ENV}
-          echo "CRON1=$(grep -A 1 'schedule:' shangyou/.github/workflows/build-openwrt.yml |awk 'NR==2' |sed 's/^[ ]*//g' |sed s/^#// |sed 's/^[ ]*//g' |sed 's/\//\\&/g' |sed 's/\*/\\&/g')" >> ${GITHUB_ENV}
-          if [[ `grep 'cron:' repogx/.github/workflows/build-openwrt.yml |sed 's/^[ ]*//g' |grep '^-\ cron'` ]]; then
-            sed -i 's/^#\(.*schedule:\)/\1/' shangyou/.github/workflows/build-openwrt.yml
-            sed -i 's/^#\(.*- cron:\)/\1/' shangyou/.github/workflows/build-openwrt.yml
-          fi
-          echo "TARGET1=$(grep 'target: \[' shangyou/.github/workflows/build-openwrt.yml  |sed 's/^[ ]*//g' |grep '^target' |cut -d '#' -f1 |sed 's/\[/\\&/' |sed 's/\]/\\&/')" >> ${GITHUB_ENV}
-          echo "TARGET2=$(grep 'target: \[' repogx/.github/workflows/build-openwrt.yml |sed 's/^[ ]*//g' |grep '^target' |cut -d '#' -f1 |sed 's/\[/\\&/' |sed 's/\]/\\&/')" >> ${GITHUB_ENV}
-          echo "QIDONG1=$(grep -A 1 'paths:' shangyou/.github/workflows/compile.yml |awk 'NR==2' |sed 's/^[ ]*//g' |sed 's/\//\\&/g')" >> ${GITHUB_ENV}
-          echo "QIDONG2=- 'config'" >> ${GITHUB_ENV}
-          echo "TARGE1=$(grep 'target: \[' shangyou/.github/workflows/compile.yml |sed 's/^[ ]*//g' |grep '^target' |cut -d '#' -f1 |sed 's/\[/\\&/' |sed 's/\]/\\&/')" >> ${GITHUB_ENV}
-          echo "TARGE2=$(grep 'target: \[' repogx/.github/workflows/compile.yml |sed 's/^[ ]*//g' |grep '^target' |cut -d '#' -f1 |sed 's/\[/\\&/' |sed 's/\]/\\&/')" >> ${GITHUB_ENV}
-          echo "BEIYONG1=$(grep -A 2 'target:' shangyou/.github/workflows/build-openwrt.yml |grep '\# \[.*\]' | sed -r 's/\# \[(.*)\]/\1/' |sed 's/^[ ]*//g')" >> ${GITHUB_ENV}
-          echo "BEIYONG2=$(grep -A 2 'target:' repogx/.github/workflows/build-openwrt.yml |grep '\# \[.*\]' | sed -r 's/\# \[(.*)\]/\1/' |sed 's/^[ ]*//g')" >> ${GITHUB_ENV}
+        wget -q https://raw.githubusercontent.com/281677160/common-main/main/bendi/tongbu.sh -O ${GITHUB_WORKSPACE}/tongbu.sh
+        if [[ $? -ne 0 ]]; then
+          curl -fsSL https://raw.githubusercontent.com/281677160/common-main/main/bendi/tongbu.sh -o ${GITHUB_WORKSPACE}/tongbu.sh
+        fi
+        if [[ `grep -c "shangyou" "${GITHUB_WORKSPACE}/tongbu.sh"` -eq '0' ]]; then
+          echo "应用文件下载失败"
+          exit 1
+        else
+          sudo chmod +x ${GITHUB_WORKSPACE}/tongbu.sh
         fi
         
-    - name: 同步上游仓库
-      if: env.REPO_TOKEN && (github.event.inputs.again-fork == 'fork')
+        if [[ -z "${{ github.event.inputs.fork }}" ]]; then
+          echo "again-fork=0" >> ${GITHUB_ENV}
+        elif [[ "${{ github.event.inputs.fork }}" == '不同步上游仓库,单纯消灭仓库的.bak备份文件' ]]; then
+          echo "again-fork=1" >> ${GITHUB_ENV}
+        elif [[ "${{ github.event.inputs.fork }}" == '单文件同步,带备份' ]]; then
+          echo "again-fork=2" >> ${GITHUB_ENV}
+        elif [[ "${{ github.event.inputs.fork }}" == '单文件同步,不要备份' ]]; then
+          echo "again-fork=3" >> ${GITHUB_ENV}
+        elif [[ "${{ github.event.inputs.fork }}" == '拉取整个上游仓库覆盖您现在的仓库(无备份)' ]]; then
+          echo "again-fork=4" >> ${GITHUB_ENV}
+        fi
+        
+        if [[ -n "${{ github.event.inputs.establish_sample }}" ]] && [[ -n "${{ github.event.inputs.establish_name }}" ]]; then
+          echo "inputs_establish_sample=${{ github.event.inputs.establish_sample }}" >> ${GITHUB_ENV}
+          echo "inputs_establish_name=${{ github.event.inputs.establish_name }}" >> ${GITHUB_ENV}
+          echo "inputs_Establish=1" >> ${GITHUB_ENV}
+        fi
+        
+        if [[ -n "${{ github.event.inputs.Deletefile_name }}" ]]; then
+          echo "inputs_Deletefile_name=${{ github.event.inputs.Deletefile_name }}" >> ${GITHUB_ENV}
+          echo "inputs_Deletefile=1" >> ${GITHUB_ENV}
+        fi
+        
+    - name: 同步更新上游仓库
+      if: env.REPO_TOKEN  && github.event.inputs.Synchro == 'true' && env.again-fork != '0'
       run: |
         cd ${GITHUB_WORKSPACE}
-        if [[ -n "$(ls -A "${GITHUB_WORKSPACE}/repogx/.github/workflows/build-openwrt.yml" 2>/dev/null)" ]]; then
-          if [[ -n "${{env.BEIYONG1}}" ]] && [[ -n "${{env.BEIYONG2}}" ]]; then
-            sed -i "s/${{env.BEIYONG1}}/${{env.BEIYONG2}}/g" shangyou/.github/workflows/build-openwrt.yml
-          fi
-          if [[ -n "${{env.CRON1}}" ]] && [[ -n "${{env.CRON2}}" ]]; then
-            sed -i "s/${{env.CRON1}}/${{env.CRON2}}/g" shangyou/.github/workflows/build-openwrt.yml
-          fi
-          if [[ -n "${{env.TARGET1}}" ]] && [[ -n "${{env.TARGET2}}" ]]; then
-            sed -i "s/${{env.TARGET1}}/${{env.TARGET2}}/g" shangyou/.github/workflows/build-openwrt.yml
-          fi
-          if [[ -n "${{env.TARGE1}}" ]] && [[ -n "${{env.TARGE2}}" ]]; then
-            sed -i "s/${{env.TARGE1}}/${{env.TARGE2}}/g" shangyou/.github/workflows/compile.yml
-          fi
-          if [[ -n "${{env.QIDONG1}}" ]] && [[ -n "${{env.QIDONG2}}" ]]; then
-            sed -i "s/${{env.QIDONG1}}/${{env.QIDONG2}}/g" shangyou/.github/workflows/compile.yml
-          fi
+        rm -rf shangyou && git clone -b main https://github.com/281677160/autobuild.git shangyou
+        rm -rf repogx && git clone -b main https://github.com/${{github.repository}}.git repogx
+        if [[ "${{ env.again-fork }}" == "1" ]]; then
+          echo "不同步,单纯消灭仓库的.bak备份文件"
+          source ${GITHUB_WORKSPACE}/tongbu.sh && menu1
+        elif [[ "${{ env.again-fork }}" == "2" ]]; then
+          echo "单文件同步,带备份"
+          source ${GITHUB_WORKSPACE}/tongbu.sh && menu2
+        elif [[ "${{ env.again-fork }}" == "3" ]]; then
+          echo "单文件同步,不要备份"
+          source ${GITHUB_WORKSPACE}/tongbu.sh && menu3
+        elif [[ "${{ env.again-fork }}" == "4" ]]; then
+          echo "拉取整个上游仓库覆盖您现在的仓库"
+          source ${GITHUB_WORKSPACE}/tongbu.sh && menu4
+        else
+          echo "未知错误,关闭同步更新上游仓库"
+          exit 1
         fi
-        cp -Rf ${GITHUB_WORKSPACE}/shangyou/.github/workflows/* ${GITHUB_WORKSPACE}/repogx/.github/workflows
-        cd repogx
+        
+    - name: 建立机型文件夹
+      if: env.REPO_TOKEN && github.event.inputs.Establish == 'true' && env.inputs_Establish == '1'
+      run: |
+        source ${GITHUB_WORKSPACE}/tongbu.sh && github_establish
+        
+    - name: 删除不需要的机型文件夹
+      if: env.REPO_TOKEN && github.event.inputs.Deletefile == 'true' && env.inputs_Deletefile == '1'
+      run: |
+        source ${GITHUB_WORKSPACE}/tongbu.sh && github_deletefile
+        
+    - name: 执行程序
+      if: github.event.inputs.Deletefile == 'true' || github.event.inputs.Establish == 'true' || github.event.inputs.Synchro == 'true'
+      run: |
+        sudo chmod -R +x ${GITHUB_WORKSPACE}/repogx
+        cd ${GITHUB_WORKSPACE}/repogx
         git add .
         git commit -m "Update $(date +%Y-%m%d-%H%M%S)"
         git push --quiet "https://${{ secrets.REPO_TOKEN }}@github.com/${{github.repository}}" HEAD:main
-        echo "同步完成，请注意查看[diy-part.sh]和[settings.ini]文件的变化和设置好!"
